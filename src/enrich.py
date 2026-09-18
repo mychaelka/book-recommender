@@ -42,20 +42,27 @@ def normalize_title(title: str) -> str:
     title = str(title).lower()
     title = re.sub(r"\s*\(.*?\)", "", title)
     title = title.split(":")[0]
-    return re.sub(r"[^\w ]", "", title).strip()
+    title = re.sub(r"[^\w ]", "", title)
+    return re.sub(r"\s+", " ", title).strip()
 
 
 def normalize_author(author: str) -> str:
     """First listed author, without the '(Goodreads Author)' / '(Translator)' suffixes."""
     author = str(author).split(",")[0].lower()
     author = re.sub(r"\s*\(.*?\)", "", author)
-    return re.sub(r"[^\w ]", "", author).strip()
+    author = re.sub(r"[^\w ]", "", author)
+    return re.sub(r"\s+", " ", author).strip()  # the export has names like "Dan    Brown"
 
 
 def clean_isbn(value) -> str | None:
     """Goodreads wraps ISBNs as ="9781250234001"; extract the digits."""
     match = re.search(r"(\d{9}[\dX]|\d{13})", str(value))
     return match.group(1) if match else None
+
+
+def book_isbns(row) -> list[str]:
+    """ISBN13 then ISBN10, skipping missing ones (NaN is truthy, so check the type)."""
+    return [isbn for isbn in (row["isbn13"], row["isbn10"]) if isinstance(isbn, str)]
 
 
 def clean_description(text) -> str | None:
@@ -139,9 +146,7 @@ def match_local(my_books: pd.DataFrame, books: pd.DataFrame) -> pd.DataFrame:
 # ---------- source 2: Google Books ----------
 
 def fetch_google(client: CachedClient, row) -> dict | None:
-    queries = []
-    if row["isbn13"] or row["isbn10"]:
-        queries.append(f"isbn:{row['isbn13'] or row['isbn10']}")
+    queries = [f"isbn:{isbn}" for isbn in book_isbns(row)[:1]]
     queries.append(f'intitle:{normalize_title(row["Title"])} inauthor:{normalize_author(row["Author"])}')
 
     for q in queries:
@@ -177,11 +182,9 @@ def _openlibrary_work(client: CachedClient, work_key: str) -> dict | None:
 
 def fetch_openlibrary(client: CachedClient, row) -> dict | None:
     work_keys = []
-    for isbn in (row["isbn13"], row["isbn10"]):
-        if isbn:
-            edition = client.get_json(f"https://openlibrary.org/isbn/{isbn}.json")
-            work_keys += [w["key"] for w in (edition or {}).get("works", [])]
-            break
+    for isbn in book_isbns(row):
+        edition = client.get_json(f"https://openlibrary.org/isbn/{isbn}.json")
+        work_keys += [w["key"] for w in (edition or {}).get("works", [])]
 
     url = "https://openlibrary.org/search.json?" + urllib.parse.urlencode({
         "title": normalize_title(row["Title"]),
@@ -206,7 +209,7 @@ def main():
 
     my_books["isbn13"] = my_books["ISBN13"].map(clean_isbn)
     my_books["isbn10"] = my_books["ISBN"].map(clean_isbn)
-    my_books["Author"] = my_books["Author"].str.strip()
+    my_books["Author"] = my_books["Author"].str.replace(r"\s+", " ", regex=True).str.strip()
 
     enriched = match_local(my_books, books)
     print(f"Matched in books.csv: {enriched['source'].notna().sum()} / {len(my_books)}")
