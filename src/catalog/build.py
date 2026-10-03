@@ -9,6 +9,7 @@ Outputs (parquet) in --out:
     work_sources.parquet  source record -> work_id (use it to join Book-Crossing interactions)
     work_tags.parquet     (work_id, tag, source)
     match_edges.parquet   which records were matched, and how
+    records.parquet       every source record before merging (rid = row position), for debugging
 """
 
 from __future__ import annotations
@@ -124,6 +125,7 @@ def build(out_dir: Path) -> None:
     works.to_parquet(out_dir / "works.parquet")
     work_sources.to_parquet(out_dir / "work_sources.parquet", index=False)
     work_tags.to_parquet(out_dir / "work_tags.parquet", index=False)
+    records.rename_axis("rid").reset_index().to_parquet(out_dir / "records.parquet", index=False)
     edges.assign(
         source_a=records["source"].to_numpy()[edges["rid_a"]], id_a=records["source_id"].to_numpy()[edges["rid_a"]],
         source_b=records["source"].to_numpy()[edges["rid_b"]], id_b=records["source_id"].to_numpy()[edges["rid_b"]],
