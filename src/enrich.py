@@ -135,7 +135,7 @@ def match_local(my_books: pd.DataFrame, books: pd.DataFrame) -> pd.DataFrame:
                 hit = index.loc[value]
                 description = clean_description(hit["description"])
                 if description:
-                    results.append({"description": description,
+                    results.append({"corpus_book_id": hit["bookId"], "description": description,
                                     "genres": hit["genres"], "source": method})
                     break
         else:
