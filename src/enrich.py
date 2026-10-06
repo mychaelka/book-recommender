@@ -8,8 +8,8 @@ Sources, tried in order for each book:
 API responses are cached in data/cache/ so re-runs don't hit the network again.
 
 Usage:
-    python src/enrich.py
-    GOOGLE_BOOKS_API_KEY=... python src/enrich.py
+    python src_old/enrich.py
+    GOOGLE_BOOKS_API_KEY=... python src_old/enrich.py
 """
 
 import json

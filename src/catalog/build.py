@@ -1,7 +1,7 @@
 """Build the unified catalogue: load -> match -> cluster -> merge -> validate -> write.
 
 Usage:
-    python -m catalog.build                    (from src/, or with src on PYTHONPATH)
+    python -m catalog.build                    (from src_old/, or with src_old on PYTHONPATH)
     python -m catalog.build --out data/processed
 
 Outputs (parquet) in --out:
