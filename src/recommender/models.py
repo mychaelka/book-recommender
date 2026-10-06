@@ -41,19 +41,22 @@ def top_k(scores: np.ndarray, k: int) -> np.ndarray:
     return np.take_along_axis(idx, order, axis=1)  # apply indices from order onto idx and return
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, eq=False)
 class PopularityRecommender(Recommender):
     """
     Baseline recommender based on popularity
     """
-    pass
+    popularity: np.ndarray
+
+    def score(self, seeds: sp.csr_matrix) -> np.ndarray:
+        return np.tile(self.popularity, (seeds.shape[0], 1)).astype(np.float32)
 
 
 @dataclass(frozen=True)
 class ContentRecommender(Recommender):
-    raise NotImplementedError
+    pass
 
 
 @dataclass(frozen=True)
 class HybridRecommender(Recommender):
-    raise NotImplementedError
+    pass
