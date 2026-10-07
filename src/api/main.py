@@ -1,6 +1,6 @@
 from fastapi import FastAPI
-
-app = FastAPI(title="Book recommender", version="0.1.0", lifespan=lifespan)
+from api.routers import recommendations
+app = FastAPI(title="Book recommender", version="0.1.0")
 app.include_router(recommendations.router)
 
 
