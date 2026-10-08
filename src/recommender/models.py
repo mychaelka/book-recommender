@@ -6,11 +6,9 @@ Fitting models (TF-IDF, embeddings,...)
 from __future__ import annotations
 
 import numpy as np
-import pandas as pd
 import scipy.sparse as sp
 
 from dataclasses import dataclass
-from sklearn.feature_extraction.text import TfidfVectorizer
 
 
 @dataclass(frozen=True)
@@ -23,19 +21,19 @@ class Recommender:
     def score(self, seeds: sp.csr_matrix) -> np.ndarray:
         raise NotImplementedError
 
-    def recommend(self, seeds: sp.csr_matrix, k: int = 10, without_seeds: bool = True) -> np.ndarray:
+    def recommend(self, seeds: sp.csr_matrix, k: int = 10, without_seeds: bool = True) -> tuple[np.ndarray, np.ndarray]:
         """
         :param seeds: Matrix of shape (n_queries, n_books); books the user has already read
         :param k: How many books to recommend
         :param without_seeds: Never recommend books already mentioned
-        :return: Row positions of the top k books.
+        :return: Row positions of the top k books and their corresponding scores.
         """
         scores = self.score(seeds)
         if without_seeds:
             rows, cols = seeds.nonzero()
             scores[rows, cols] = -np.inf
         positions = top_k(scores, k)
-        return np.take_along_axis(scores, positions, axis=1)
+        return positions, np.take_along_axis(scores, positions, axis=1)
 
 
 def top_k(scores: np.ndarray, k: int) -> np.ndarray:

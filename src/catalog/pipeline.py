@@ -137,13 +137,13 @@ def merge_sources(gr: pd.DataFrame, bx: pd.DataFrame) -> pd.DataFrame:
     Create one row per book. Where match is found, books are combined into one, otherwise
     each is kept as is.
     """
-    gr = gr.assign(key=gr["key"].fillna("gr-nokey: " + gr["gr_id"]))
-    bx = bx.assign(key=bx["key"].fillna("bx-nokey: " + bx["key"]))
+    gr = gr.assign(key=gr["key"].fillna("gr-nokey:" + gr["gr_id"]))
+    bx = bx.assign(key=bx["key"].fillna("bx-nokey:" + bx["bx_id"]))
 
     m = gr.merge(bx, on="key", how="outer", suffixes=("_gr", "_bx"))
 
     books = pd.DataFrame({
-        "book_id": m["bx_id"].fillna("gr: " + m["gr_id"]),  # book-crossing when present to later join interactions
+        "book_id": m["bx_id"].fillna("gr:" + m["gr_id"]),  # book-crossing when present to later join interactions
         "gr_id": m["gr_id"],
         "bx_id": m["bx_id"],
         "title": m["title_gr"].fillna(m["title_bx"]),

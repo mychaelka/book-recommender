@@ -7,10 +7,10 @@ import numpy as np
 ROOT = Path(__file__).resolve().parents[2]
 BOOKS_PATH = ROOT / "data" / "books.parquet"
 
-POPULARITY_SOURCES: tuple[str, ...] = ("gr_popularity", "bx_popularity")
+POPULARITY_SOURCES: tuple[str, ...] = ("gr_num_ratings", "bx_readers")
 
 
-def load_books(path: Path) -> pd.DataFrame:
+def load_books(path: Path = BOOKS_PATH) -> pd.DataFrame:
     if not path.exists():
         raise FileNotFoundError(f"{path} does not exist, run `uv run python -m catalog.pipeline` first")
     return pd.read_parquet(path)
