@@ -2,13 +2,16 @@ from pydantic import BaseModel
 
 
 class Book(BaseModel):
-    work_id: str
+    book_id: str
     title: str
-    authors: list[str]
-    year: int | None = None
+    author: str | None = None
+
+
+class ScoredBook(Book):
+    score: float
 
 
 class RecommendationResponse(BaseModel):
-    query: Book
+    query: list[Book]
     model: str
-    recommendations: list[Book]
+    recommendations: list[ScoredBook]
