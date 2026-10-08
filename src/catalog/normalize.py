@@ -35,9 +35,6 @@ def is_english(language: pd.Series, keep_missing: bool = True) -> pd.Series:
         keep_missing: Treat missing / unknown language as English. Default True because
             those books are mostly English (e.g. "Moby Dick", "Mere Christianity");
             dropping them would remove popular titles.
-
-    Usage:
-        books = books[is_english(books["language"])]
     """
     labels = language.astype("str").str.strip().str.casefold()
     english = labels.isin(ENGLISH_LABELS)
