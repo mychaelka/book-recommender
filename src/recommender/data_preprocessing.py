@@ -36,3 +36,9 @@ def popularity_scores(books: pd.DataFrame, sources: tuple[str, ...] = POPULARITY
     percentiles = pd.concat({col: source_percentile(books[col]) for col in sources}, axis=1)
     combined = percentiles.max(axis=1) if how == "max" else percentiles.mean(axis=1)
     return combined.fillna(0.0).to_numpy(dtype=np.float32)
+
+
+def build_text(books: pd.DataFrame, max_tags: int = 10) -> pd.Series:
+    """One text per book for content-based models"""
+    tags = books["tags"].map(lambda x: ", ".join(list(x)[:max_tags]))
+    return books["title"].fillna("") + ". " + tags + ". " + books["description"].fillna("")

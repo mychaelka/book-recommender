@@ -6,8 +6,10 @@ Fitting models (TF-IDF, embeddings,...)
 from __future__ import annotations
 
 import numpy as np
+import pandas as pd
 import scipy.sparse as sp
 
+from sklearn.feature_extraction.text import TfidfVectorizer
 from dataclasses import dataclass
 
 
@@ -65,11 +67,37 @@ class PopularityRecommender(Recommender):
         return np.tile(self.popularity, (seeds.shape[0], 1)).astype(np.float32)
 
 
-@dataclass(frozen=True)
+def fit_tfidf(texts: pd.Series) -> tuple[TfidfVectorizer, sp.csr_matrix]:
+    """Fit TF-IDF on all book texts (title, description, tags). Rows of the matrix
+    are L2-normalized."""
+    vectorizer = TfidfVectorizer(stop_words='english', min_df=2, max_df=0.5,
+                                 sublinear_tf=True, dtype=np.float32, token_pattern=r"(?u)\b[^\W\d_]{2,}\b")
+    return vectorizer, vectorizer.fit_transform(texts)
+
+
+@dataclass(frozen=True, eq=False)
 class ContentRecommender(Recommender):
-    pass
+    """
+    Content-based recommender using cosine similarity.
+    Works with TF-IDF (sparse matrix sp.csr_matrix)
+    and embeddings (dense matrix np.ndarray)
+    """
+    vectors: np.ndarray | sp.csr_matrix  # (n_books, dim), rows L2-normalized; "database"
+    candidates: np.ndarray | None = None  # bool (n_books,): books allowed as recommendations
+
+    def score(self, seeds: sp.csr_matrix) -> np.ndarray:
+        profile = seeds @ self.vectors  # (n_queries, dim), adds up seed books' vectors; builds user 'taste profile'; "a bit of wizard, a lot of hobbit and a bit of magic"
+        scores = profile @ self.vectors.T  # (n_queries, n_books)
+        scores = scores.toarray() if sp.issparse(scores) else np.asarray(scores)
+        scores = scores.astype(np.float32)
+
+        if self.candidates is not None:
+            scores[:, ~self.candidates] = -np.inf
+
+        return scores
 
 
-@dataclass(frozen=True)
+
+@dataclass(frozen=True, eq=False)
 class HybridRecommender(Recommender):
     pass
