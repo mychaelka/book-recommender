@@ -7,7 +7,7 @@ from api.schemas import RecommendationResponse
 
 router = APIRouter(prefix="/recommendations", tags=["recommendations"])
 
-ModelName = Literal["popularity"]
+ModelName = Literal["popularity", "tfidf"]
 
 
 @router.get("")
@@ -22,4 +22,6 @@ def recommendations(
         recs = service.recommend(book_id, model=model, k=k)
     except KeyError as e:
         raise HTTPException(status_code=404, detail=f"Unknown book_id(s): {e.args[0]}")
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
     return RecommendationResponse(query=query, model=model, recommendations=recs)
