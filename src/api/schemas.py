@@ -1,4 +1,5 @@
 from pydantic import BaseModel
+from typing import Literal
 
 
 class Book(BaseModel):
@@ -20,3 +21,22 @@ class RecommendationResponse(BaseModel):
     query: list[Book]
     model: str
     recommendations: list[ScoredBook]
+
+
+class TitleMatch(Book):
+    match: float
+
+
+class TitleSearchResponse(BaseModel):
+    query: str
+    status: Literal["match", "did_you_mean", "not_found"]
+    books: list[TitleMatch]
+
+
+class TitleRecommendationResponse(BaseModel):
+    title: str
+    status: Literal["match", "did_you_mean", "not_found"]
+    model: str
+    query: Book | None = None
+    suggestions: list[TitleMatch] = []
+    recommendations: list[ScoredBook] = []
