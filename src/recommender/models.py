@@ -97,7 +97,54 @@ class ContentRecommender(Recommender):
         return scores
 
 
+def row_ranks(scores: np.ndarray) -> np.ndarray:
+    """Rank of every item within its row"""
+    order = np.argsort(-scores, axis=1)
+    ranks = np.empty_like(order)
+    rows = np.arange(scores.shape[0])[:, None]
+    ranks[rows, order] = np.arange(1, scores.shape[1] + 1)
+    return ranks
+
 
 @dataclass(frozen=True, eq=False)
 class HybridRecommender(Recommender):
-    pass
+    """Reciprocal Rank Fusion"""
+    first: Recommender
+    second: Recommender
+    alpha: float = 0.5
+    rrf_k: int = 60
+
+    def score(self, seeds: sp.csr_matrix) -> np.ndarray:
+        s1, s2 = self.first.score(seeds), self.second.score(seeds)
+        fused = self.alpha / (self.rrf_k + row_ranks(s1)) + (1 - self.alpha) / (self.rrf_k + row_ranks(s2))
+        fused[np.isneginf(s1) | np.isneginf(s2)] = -np.inf  # exclude if any model excludes it
+        return fused.astype(np.float32)
+
+
+@dataclass(frozen=True, eq=False)
+class PopularityReranker(Recommender):
+    """Keep the base model's top `n_candidates` per query and re-score them as
+    (1 - beta) * similarity (rescaled 0-1 within the candidates) + beta * popularity."""
+
+    base: Recommender
+    popularity: np.ndarray
+    beta: float = 0.2  # 0 = similarity only
+    n_candidates: int = 200
+
+    def score(self, seeds: sp.csr_matrix) -> np.ndarray:
+        base = self.base.score(seeds)
+        rows, cols = seeds.nonzero()
+        base[rows, cols] = -np.inf
+
+        top = top_k(base, self.n_candidates)
+        sim = np.take_along_axis(base, top, axis=1)
+        finite = np.isfinite(sim)
+        safe = np.where(finite, sim, np.nan)
+        lo = np.nanmin(safe, axis=1, keepdims=True)
+        hi = np.nanmax(safe, axis=1, keepdims=True)
+        scaled = (safe - lo) / (hi - lo + 1e-12)
+        blended = np.where(finite, (1 - self.beta) * scaled + self.beta * self.popularity[top], -np.inf)
+
+        out = np.full(base.shape, -np.inf, dtype=np.float32)
+        np.put_along_axis(out, top, blended, axis=1)
+        return out
