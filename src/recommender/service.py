@@ -22,7 +22,7 @@ from recommender.models import (
     PopularityReranker,
     HybridRecommender
 )
-from recommender.embeddings import load_embeddings
+from recommender.embeddings import load_embeddings, embedding_paths
 
 CONTENT_MODELS = {"tfidf", "embeddings", "hybrid", "hybrid_popular"}
 
@@ -30,7 +30,7 @@ MAX_SEEDS = 20
 SNIPPET_CHARS = 300
 TITLE_ACCEPT = 0.9
 TITLE_SUGGEST = 0.6
-TITLE_MARGIN = 0.2
+TITLE_MARGIN = 0.1
 MATCH, DID_YOU_MEAN, NOT_FOUND = "match", "did_you_mean", "not_found"
 HYBRID_ALPHA, HYBRID_BETA = 0.5, 0.2
 
@@ -71,8 +71,9 @@ class RecommenderService:
         books = [{**self._book(p), "match": round(float(match[p]), 3)} for p in picked]
         if not books:
             return NOT_FOUND, []
-        best, runner_up = books[0]["match"], (books[1]["match"] if len(books) > 1 else 0.0)
-        if best >= TITLE_ACCEPT and best - runner_up >= TITLE_MARGIN:
+        best, second = picked[0], (picked[1] if len(picked) > 1 else None)
+        clear_winner = second is None or ranked[best] - ranked[second] >= TITLE_MARGIN
+        if match[best] >= TITLE_ACCEPT and clear_winner:
             return MATCH, books[:1]
         return DID_YOU_MEAN, books
 
@@ -147,4 +148,6 @@ class RecommenderService:
 
 def build_recommender_service(data_path: Path = BOOKS_PATH) -> RecommenderService:
     books = load_books(data_path)
-    return RecommenderService(books, load_embeddings(books.index.to_numpy()))
+    embeddings = (load_embeddings(data_path, books.index.to_numpy())
+                  if embedding_paths(data_path)[0].exists() else None)
+    return RecommenderService(books, embeddings=embeddings)

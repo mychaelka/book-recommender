@@ -184,10 +184,38 @@ def build_books_dataset(goodreads_path: Path, bookcrossing_dir: Path, out_path: 
     return books
 
 
+GOODREADS_BOOKS_OUT = ROOT / "data" / "books_goodreads.parquet"
+
+
+def build_goodreads_books(goodreads_path: Path = GOODREADS_PATH, out_path: Path = GOODREADS_BOOKS_OUT) -> pd.DataFrame:
+    """Goodreads only, in the same layout as the merged data"""
+    gr = add_match_key(load_goodreads_dataset(goodreads_path))
+    gr, _ = deduplicate_by_key(gr, id_col="gr_id", popularity_col="gr_num_ratings")
+
+    books = pd.DataFrame({
+        "book_id": "gr:" + gr["gr_id"],
+        "gr_id": gr["gr_id"],
+        "bx_id": pd.NA,
+        "title": gr["title"],
+        "author": gr["author"],
+        "description": gr["description"],
+        "description_source": gr["description"].notna().map({True: "goodreads", False: None}),
+        "tags": gr["tags"],
+        "gr_num_ratings": gr["gr_num_ratings"],
+        "bx_readers": 0,                         # no Book-Crossing data; kept so popularity_scores works
+    })
+    books["has_description"] = books["description"].notna()
+    books = books.set_index("book_id")
+    books.to_parquet(out_path)
+    print(f"goodreads-only catalogue: {len(books):,} books, {books['has_description'].sum():,} with description")
+    return books
+
+
 def main() -> None:
     bookcrossing_dir = Path(kagglehub.dataset_download(BOOKCROSSING_HANDLE))
     build_books_dataset(GOODREADS_PATH, bookcrossing_dir, BOOKS_OUT)
 
 
 if __name__ == "__main__":
-    main()
+    import sys
+    build_goodreads_books() if "--goodreads-only" in sys.argv else main()
