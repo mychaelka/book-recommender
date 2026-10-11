@@ -2,13 +2,18 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
+import os
+from pathlib import Path
+
+from api.dependencies import ServiceDep
 from api.routers import books, recommendations
 from recommender.service import build_recommender_service
+from recommender.data_preprocessing import BOOKS_PATH
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    app.state.service = build_recommender_service()
+    app.state.service = build_recommender_service(Path(os.environ.get("BOOKS_PATH", BOOKS_PATH)))
     yield
 
 
@@ -18,5 +23,5 @@ app.include_router(recommendations.router)
 
 
 @app.get("/health")
-def health() -> dict:
-    return {"status": "ok"}
+def health(service: ServiceDep) -> dict:
+    return {"status": "ok", "books": len(service.ids), "models": sorted(service.models)}
