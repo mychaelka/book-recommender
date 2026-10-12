@@ -23,7 +23,7 @@ import pandas as pd
 from scipy.stats import chi2
 
 from catalog.normalize import author_key
-from recommender.data_preprocessing import ROOT, load_books
+from recommender.data_preprocessing import ROOT, load_books, BOOKS_PATH
 from recommender.embeddings import load_embeddings
 from recommender.models import HybridRecommender, Recommender, seeds_from_positions
 from recommender.service import RecommenderService
@@ -199,7 +199,7 @@ def show(table: pd.DataFrame) -> str:
 
 def main(n_queries: int = 2000, seed: int = 0) -> None:
     books = load_books()
-    embeddings = load_embeddings(books.index.to_numpy())
+    embeddings = load_embeddings(BOOKS_PATH, books.index.to_numpy())
     liked = load_liked(books)
     test_sets = {
         "all_pairs": make_queries(liked, n_queries, seed),
