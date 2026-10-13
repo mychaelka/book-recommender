@@ -13,6 +13,23 @@ import httpx
 API_URL = os.environ.get("API_URL", "http://127.0.0.1:8000")
 client = httpx.Client(base_url=API_URL, timeout=30)
 
+MODEL_LABELS = {
+    "hybrid_cf": "Content + readers (TF-IDF + CF)",
+    "cf": "Readers also liked (collaborative filtering)",
+    "tfidf": "Similar description (TF-IDF)",
+    "embeddings": "Similar meaning (embeddings)",
+    "hybrid": "Content hybrid (TF-IDF + embeddings)",
+    "hybrid_popular": "Content hybrid + popularity",
+    "popularity": "Most popular (baseline)",
+}
+
+
+def model_choices(models: list[str]) -> list[tuple[str, str]]:
+    """(label shown, model name sent to the API), best model first."""
+    order = list(MODEL_LABELS)
+    ranked = sorted(models, key=lambda m: order.index(m) if m in order else len(order))
+    return [(MODEL_LABELS.get(m, m), m) for m in ranked]
+
 
 def available_models() -> list[str]:
     """Models the running API actually has loaded (from /health)."""
@@ -83,7 +100,8 @@ with gr.Blocks(title="Book recommender") as demo:
         models = available_models()
         with gr.Row():
             title = gr.Textbox(label="Book title", placeholder="The Fellowship of the Ring", scale=3)
-            model = gr.Dropdown(models, value="tfidf" if "tfidf" in models else models[0], label="Model")
+            choices = model_choices(available_models())
+            model = gr.Dropdown(choices, value=choices[0][1], label="Model")
             k = gr.Slider(1, 20, value=10, step=1, label="How many")
         recommend_button = gr.Button("Recommend", variant="primary")
         suggestions = gr.Radio(label="Suggestions", visible=False)

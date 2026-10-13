@@ -23,6 +23,7 @@ from recommender.models import (
     HybridRecommender
 )
 from recommender.embeddings import load_embeddings, embedding_paths
+from recommender.collaborative import item_user_matrix, load_interactions
 
 CONTENT_MODELS = {"tfidf", "embeddings", "hybrid", "hybrid_popular"}
 
@@ -33,10 +34,14 @@ TITLE_SUGGEST = 0.6
 TITLE_MARGIN = 0.1
 MATCH, DID_YOU_MEAN, NOT_FOUND = "match", "did_you_mean", "not_found"
 HYBRID_ALPHA, HYBRID_BETA = 0.5, 0.2
+MIN_READERS = 5  # only recommend books with at least 5 readers
 
 
 class RecommenderService:
-    def __init__(self, books: pd.DataFrame, embeddings: np.ndarray | None = None) -> None:
+    def __init__(self,
+                 books: pd.DataFrame,
+                 embeddings: np.ndarray | None = None,
+                 interactions: pd.DataFrame | None = None) -> None:
         self.books = books
         popularity = popularity_scores(books)
         self.titles = TitleIndex.build(books["title"], popularity)
@@ -49,12 +54,22 @@ class RecommenderService:
 
         tfidf = ContentRecommender(tfidf_matrix, candidates=candidates)
         self.models = {"popularity": PopularityRecommender(popularity), "tfidf": tfidf}
+
         if embeddings is not None:
             semantic = ContentRecommender(embeddings, candidates=candidates)
             fused = HybridRecommender(tfidf, semantic, alpha=HYBRID_ALPHA)
             self.models["embeddings"] = semantic
             self.models["hybrid"] = fused
             self.models["hybrid_popular"] = PopularityReranker(fused, popularity, beta=HYBRID_BETA)
+
+        if interactions is not None:
+            cf_matrix = item_user_matrix(interactions, self.ids)
+            readers = np.diff(cf_matrix.indptr)  # readers per book
+            self.has_readers = readers > 0
+            cf = ContentRecommender(cf_matrix, candidates=candidates & (readers >= MIN_READERS))
+            self.models["cf"] = cf
+            self.models["hybrid_cf"] = HybridRecommender(tfidf, cf, alpha=0.5)  # best model in evaluation
+
 
     def search_titles(self, query: str, n: int = 5) -> tuple[str, list[dict]]:
         """returns ("match" | "did you mean" | "not found", books with 0-1 match score)"""
@@ -123,6 +138,9 @@ class RecommenderService:
         if model in CONTENT_MODELS and not self.has_text[seed_positions].any():
             raise ValueError("Not enough information about these books to find similar ones")
 
+        if model in ["cf", "hybrid_cf"] and not self.has_readers[seed_positions].any():
+            raise ValueError("No reader data for these books yet. Try a content-based model instead.")
+
         seeds = seeds_from_positions([seed_positions], len(self.ids))
         return self._results(model, seeds, k)
 
@@ -148,6 +166,7 @@ class RecommenderService:
 
 def build_recommender_service(data_path: Path = BOOKS_PATH) -> RecommenderService:
     books = load_books(data_path)
+    interactions = load_interactions(books.index)
     embeddings = (load_embeddings(data_path, books.index.to_numpy())
                   if embedding_paths(data_path)[0].exists() else None)
-    return RecommenderService(books, embeddings=embeddings)
+    return RecommenderService(books, embeddings=embeddings, interactions=interactions)

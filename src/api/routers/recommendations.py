@@ -9,7 +9,7 @@ from recommender.service import NOT_FOUND
 
 router = APIRouter(prefix="/recommendations", tags=["recommendations"])
 
-ModelName = Literal["popularity", "tfidf", "embeddings", "hybrid", "hybrid_popular"]
+ModelName = Literal["popularity", "tfidf", "embeddings", "hybrid", "hybrid_popular", "cf", "hybrid_cf"]
 
 
 @router.get("")

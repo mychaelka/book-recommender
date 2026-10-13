@@ -15,20 +15,18 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass
-from pathlib import Path
 
-import kagglehub
 import numpy as np
 import pandas as pd
 from scipy.stats import chi2
 
 from catalog.normalize import author_key
+from recommender.collaborative import load_interactions
 from recommender.data_preprocessing import ROOT, load_books, BOOKS_PATH
 from recommender.embeddings import load_embeddings
 from recommender.models import HybridRecommender, Recommender, seeds_from_positions
 from recommender.service import RecommenderService
 
-BOOKCROSSING_HANDLE = "simonbouchardk/book-recommendation-platform-data/versions/1"
 LIKED_RATING = 7
 K = 10
 REFERENCE_MODEL = "tfidf"          # every model is compared against this one (McNemar p-value)
@@ -44,15 +42,11 @@ NON_INFORMATIVE_TAGS = frozenset({
 
 # ---------- test sets ----------
 
-def load_liked(books: pd.DataFrame) -> pd.DataFrame:
+def load_liked(interactions: pd.DataFrame, books: pd.DataFrame) -> pd.DataFrame:
     """(user_id, book_id) pairs: explicit rating >= 7, on books the content models can recommend."""
-    interactions = pd.read_csv(Path(kagglehub.dataset_download(BOOKCROSSING_HANDLE)) / "interactions.csv",
-                               dtype={"user_id": str, "work_id": str})
-    aliases = pd.read_parquet(ROOT / "data" / "bx_aliases.parquet")["kept_id"]
-    interactions["book_id"] = interactions["work_id"].map(aliases).fillna(interactions["work_id"])
     candidates = books.index[books["has_description"]]
     liked = interactions[(interactions["rating"] >= LIKED_RATING) & interactions["book_id"].isin(candidates)]
-    return liked.drop_duplicates(["user_id", "book_id"])[["user_id", "book_id"]]
+    return liked[["user_id", "book_id"]]
 
 
 def liked_per_reader(liked: pd.DataFrame) -> pd.Series:
@@ -66,8 +60,8 @@ def make_queries(liked: pd.DataFrame, n_queries: int, seed: int) -> pd.DataFrame
     rng = np.random.default_rng(seed)
     per_user = liked_per_reader(liked)
     users = rng.choice(per_user.index.to_numpy(), size=min(n_queries, len(per_user)), replace=False)
-    pairs = [rng.choice(per_user[u], size=2, replace=False) for u in users]
-    return pd.DataFrame(pairs, columns=["query", "target"])
+    rows = [(u, *rng.choice(per_user[u], size=2, replace=False)) for u in users]
+    return pd.DataFrame(rows, columns=["user_id", "query", "target"])
 
 
 def make_related_queries(liked: pd.DataFrame, books: pd.DataFrame, n_queries: int, seed: int,
@@ -84,9 +78,9 @@ def make_related_queries(liked: pd.DataFrame, books: pd.DataFrame, n_queries: in
         for _ in range(max_tries):
             query, target = rng.choice(per_user[user], size=2, replace=False)
             if tags[query] & tags[target]:
-                pairs.append((query, target))
+                pairs.append((user, query, target))
                 break
-    return pd.DataFrame(pairs, columns=["query", "target"])
+    return pd.DataFrame(pairs, columns=["user_id", "query", "target"])
 
 
 # ---------- running and scoring a model ----------
@@ -102,11 +96,18 @@ class EvalContext:
     popularity: np.ndarray         # (n_books,) 0-1, computed WITHOUT the hidden targets
 
 
-def build_context(books: pd.DataFrame, queries: pd.DataFrame, embeddings: np.ndarray) -> EvalContext:
-    # Leakage: each hidden target's own reader must not count towards its popularity.
+def build_context(books: pd.DataFrame, queries: pd.DataFrame, embeddings: np.ndarray,
+                  interactions: pd.DataFrame) -> EvalContext:
+    # Leakage 1: each hidden target's own reader must not count towards its popularity.
     hidden = queries["target"].value_counts()
     train = books.assign(bx_readers=books["bx_readers"].sub(hidden, fill_value=0).clip(lower=0).astype(int))
-    service = RecommenderService(train, embeddings=embeddings)
+
+    # Leakage 2: collaborative filtering must not see the hidden (reader, target) interactions (anti-join).
+    hidden_pairs = queries[["user_id", "target"]].rename(columns={"target": "book_id"})
+    marked = interactions.merge(hidden_pairs, on=["user_id", "book_id"], how="left", indicator=True)
+    train_interactions = marked[marked["_merge"] == "left_only"].drop(columns="_merge")
+
+    service = RecommenderService(train, embeddings=embeddings, interactions=train_interactions)
 
     query_pos = queries["query"].map(service.positions).to_numpy()
     target_pos = queries["target"].map(service.positions).to_numpy()
@@ -200,7 +201,8 @@ def show(table: pd.DataFrame) -> str:
 def main(n_queries: int = 2000, seed: int = 0) -> None:
     books = load_books()
     embeddings = load_embeddings(BOOKS_PATH, books.index.to_numpy())
-    liked = load_liked(books)
+    interactions = load_interactions(books.index)
+    liked = load_liked(interactions, books)
     test_sets = {
         "all_pairs": make_queries(liked, n_queries, seed),
         "related_pairs": make_related_queries(liked, books, n_queries, seed),
@@ -208,10 +210,12 @@ def main(n_queries: int = 2000, seed: int = 0) -> None:
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
 
     for name, queries in test_sets.items():
-        ctx = build_context(books, queries, embeddings)
+        ctx = build_context(books, queries, embeddings, interactions)
         print(f"\n===== {name}: {len(queries)} queries (seed={seed}), "
               f"{ctx.same_author_pair.mean():.1%} have the same author as their target =====")
-        table = evaluate_models(ctx.service.models, ctx)
+        models = ctx.service.models
+        models = {**models, "tfidf+cf": HybridRecommender(models["tfidf"], models["cf"], alpha=0.5)}
+        table = evaluate_models(models, ctx)
         print(show(table))
         table.to_csv(RESULTS_DIR / f"{name}_seed{seed}.csv")
 
